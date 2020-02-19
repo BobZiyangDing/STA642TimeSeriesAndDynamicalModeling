@@ -1,6 +1,4 @@
 
-startup
- 
 
 % Explore basics of some AR model structures and analyses 
  
@@ -114,6 +112,10 @@ hold on; plot((n+1):(n+npred),mean(xpred'),'k.'); hold off
 
   ang=angle(lambda); j=find(ang>0&ang<pi); [ abs(lambda(j)) 2*pi./angle(lambda(j)) ]
   
+  % added following 2019(b) Matlab update .. new convention for eig ...
+  [a,i]=sort(abs(lambda),'descend');  % make sure order down in modulii ...
+  [ abs(lambda(i)) 2*pi./angle(lambda(i)) ]
+  
   % note: suggested ~4year cycle +/- -- El Nino
   % Plus annual harmonics: subcycles of ~2yrs, 1yr, 1/2 yr,  ? crude but a start ...
 
@@ -121,22 +123,35 @@ hold on; plot((n+1):(n+npred),mean(xpred'),'k.'); hold off
  % stationary? 
   abssamp=[]; 
   for i=1:nmc 
-      abssamp = [abssamp abs(1./roots([-flipud(bsamp(:,i));1]))];
+      abssamp = [abssamp sort(abs(1./roots([-flipud(bsamp(:,i));1])),'descend')];
   end
-  boxplot(abssamp'); ylabel('AR(10) modulii');
+  boxplot(abssamp'); ylabel('AR(24) modulii, ordeeed down');
  
   
   % MC estimate of Prob(non-stationary): 
   sum(sum(abssamp'>1))/nmc
   
- % explore decomposition of data at fitted model parameters:   
+ % explore decomposition of data at fitted model parameters:   components
+ % ordered in terms of decreasing wavelength then modulii for real eigs
   [waves,mods,decomp]=ar_decomp(x,p,p/2);
   
   [waves mods]
   
   clf;  decomp_plot(x,decomp,4);
         decomp_plot(x,decomp,2);
-  
+
+ % what about uncertainty about wavelengths, components ...
+ % simulate posterior for decomposition of AR under reference analysis: 
+ nmc==5000;
+ [swaves,smods,sdecomp]=ar_decomp_sim(x,p,nmc);
+ figure(1); clf
+ subplot(2,1,1); boxplot(smods'); xlabel('moduli'); box off
+ subplot(2,1,2); boxplot(swaves(1:4,:)'/12); ylim([0 10]); xlabel('wavelengths (years)'); box off
+ prctile(swaves(1:4,:)'/12,[5 25 50 75 95 99])      
+
+ figure(3); clf
+ decomp_plot_sim(x,sdecomp,3)
+
       
   % repeat:  different values of p .... 
   % hard to find longer-term structure using shorter order models
@@ -144,6 +159,10 @@ hold on; plot((n+1):(n+npred),mean(xpred'),'k.'); hold off
   % which means additional low-frequency/low modulus noise terms too
   
    
+% AIC, BIC and reference marginal likelihood for model order
+maxp=25;  
+[logmlik,aic,bic] = arpcompare(x,maxp,0);   % the input 1 means ignore case p=0
+        
   
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -193,9 +212,9 @@ subplot(2,1,2); plot(x); eval(xa)
     title(name); ylabel(['Change %'])
  
 figure(2); clf
-subplot(2,1,1); acf(x,1,12); xlabel('Quarters') 
+subplot(2,1,1); acf(x,1,48); xlabel('Quarters') 
     title(['ACF ',name]); ylabel('ACF') 
-subplot(2,1,2); pacf(x,1,12); xlabel('Quarters') 
+subplot(2,1,2); pacf(x,1,48); xlabel('Quarters') 
     title(['PACF ',name]); ylabel('PACF') 
 
 % AR models for "business cycles" ? 
