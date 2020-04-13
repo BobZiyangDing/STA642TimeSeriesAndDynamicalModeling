@@ -1,0 +1,172 @@
+startup
+
+% FX data 
+% TV-VAR model for actual FX and commodity prices rather than returns
+% Portfolio examples
+% q=13 dimensional series 2000 - 2011 of daily data on FX and commodities 
+fprintf('Daily FX & commodity prices .. TVVAR analysis * porfolios \n\n')
+
+for i=1:3, figure(i); clf; end; figure(1)
+fprintf('Using figures 1, 2 & 3 ...\n\n'); pause
+
+
+[Y,Ynames]=xlsread('FXCommData2000-2011.xlsx');
+time=Y(:,1)'; Y(:,1)=[]; Ynames(9)=[]; Y(:,9)=[]; T=size(Y,1); % deletes SGD 
+for j=1:9, a=char(Ynames{j}); a(1:4)=[]; Ynames{j}=a; end; Ynames{5}='JPY'; Ynames{11}='GOL'; Ynames{12}='NSD';  % tidy up name
+% model the LOG prices ....
+Y=log(Y');  [q,T]=size(Y);  names=char(Ynames); names=names(:,1:3);
+% timing axis labels ...
+tticks=1:365:T; ti=int2str(time'); yr=ti(tticks,3:4); mo=ti(tticks,5:6); da=ti(tticks,7:8);
+tdates=[]; for i=1:length(tticks), tdates=[tdates mo(i,:)  '/' yr(i,:) '|']; end; %'/' da(i,:) '|' ]; end
+tdates=cell(size(tticks)); for i=1:length(tticks), 
+    tdates{i}=[mo(i,:)  '/' yr(i,:)]; end; %'/' da(i,:) '|' ]; end; 
+xa=['set(gca,''Xtick'',tticks);set(gca,''XtickLabel'',tdates);xlabel(''mo/yr''); box off;']; 
+
+
+% % example of plot
+r=[4 5 11]; figure(1); clf
+for j=1:3
+    subplot(3,1,j); plot(Y(r(j),:)'); ylabel('Log price'); title(names(r(j),:))
+    eval(xa) ; end
+
+
+arp=3; p=1+arp*q; % ---- set up TV-VAR(arp) with locally constant level 
+F=zeros(q*arp,T-arp); Xnames=cell(1,p); Xnames{1}='Intercept'; r=1; 
+for j=1:arp, 
+    F((j-1)*q+(1:q),:)=Y(:,(arp-j+1):(T-j)); 
+    for i=1:q, r=r+1; Xnames{r}=[ char(Ynames(i)),':Lag-',int2str(j) ]; end
+end
+Y(:,1:arp)=[]; T=T-arp; time(1:arp)=[]; 
+F=[ones(1,T);F]; % adds constant 1 for level 
+
+
+delta=0.9995; % discount level
+beta =0.98;   % discount volatility
+
+n0=3; h0=n0+q-1;  D0=h0*eye(q);  z = zeros(p,q);   zq=zeros(q,1); M0=z; r=0.99; % priors
+        if (p>1)
+              M0(2:1+q,:)=eye(q);     % sets prior mean to be zero everywhere but r on lag-1 of same series
+              M0(1,:)=mean(Y')*(1-r); % and intercept accordingly 
+        end
+Mt = M0; C0=.01*eye(p);  Ct=C0;        % initial Theta prior 
+n = n0; h=h0; D = D0;  St=D/h;         % initial Sigma prior
+sloglik=zeros(1,T); 
+
+tf=floor(T/2); % start forecasting and portfolio decisions at this time point
+tfore=T-tf; tif=0; ffore=zeros(q,tfore); Vfore=zeros(q,q,tfore);  
+k=5; nmc=500;     % k-step forecast for portfolios; nmc samples for MC predictions
+        for t = 1:T
+            ft = Mt'*F(:,t);             
+            et = Y(:,t) - ft;
+            Rt = Ct/delta; 
+            h  = beta*h;  n=h-q+1;  D = beta*D;   
+            qvt = 1 + F(:,t)'*Rt*F(:,t); sloglik(t) = ltpdf(et,zq,qvt,n,D); 
+            At = Rt*F(:,t)/qvt;
+            h=h+1; n=n+1; D = D+et*et'/qvt;  St=D/h; St=(St+St')/2; 
+            Mt = Mt + At*et'; Ct = Rt - At*At'*qvt;   
+                %%%   ad-hox fixes ....
+                     if (p>1)
+                         dm=min(1,diag(Mt(2:1+q,1:q)));  for i=1:q, Mt(1+i,i)=dm(i); end;
+                     end
+                %%%
+            % now forecast........
+            if (t>tf)
+                tif=tif+1;
+                [f,V]=forecast(k,nmc,h,D,Mt,Ct,beta,delta,q,arp,p,Y(:,t:-1:t-arp+1));
+                %f = Eforecast(k,Mt,q,arp,p,Y(:,t:-1:t-arp+1));
+                ffore(:,tif)=f; 
+                Vfore(:,:,tif)=V; 
+                display(['done at time ',int2str(t),'/',int2str(T)]) 
+            end
+        end
+
+        
+% look at some k-step ahead forecasts: 
+ for j=1:q
+        figure(1); clf; 
+        plot(1:T,Y(j,:),tf+1+k:T+k,ffore(j,:)); title(char(Ynames(j)));
+        legend('Data',[int2str(k),'-step ahead forecasts'],'location','southeast'); legend boxoff
+        eval(xa); 
+        figure(2); clf; 
+        plot(1:T,Y(j,:),tf+1+k:T+k,ffore(j,:)); title(char(Ynames(j)));
+        legend('Data',[int2str(k),'-step ahead forecasts'],'location','southeast'); legend boxoff
+        eval(xa);   xlim([T-250 T+k])      
+        pause; end
+
+    
+    
+
+
+% target mean r and minvar portfolios ..
+% We are working here with data y that are LOG PRICES so need to transform back to p = exp(y) for decisions
+% If y ~ N(f,V) then p=exp(y) is multivariate lognormal with mean vector m
+%             and variance matrix M where:   m = exp(f+diag(V)/2) and M = (m*m').*(exp(V)-1).
+% As we need to use (m,M) as the mean and variance matrix to predict actual prices
+% Then,  do move to portfolio optimizations focussed on returns,  this converts to exact calculations for returns as follows:
+
+% e.g.:  choose portfolios k steps ahead from final time point:
+
+f=ffore(:,end); V=Vfore(:,:,end);       V=(V+V')/2;                     % these are forecast mean and variance matrix for log prices
+m = exp(f+diag(V)/2); M=(m*m').*(exp(V)-1);  [ m sqrt(diag(M)) ]        % these are for actual prices
+
+% now find mean vector and variance matrix of *forecast returns* ....
+pr = exp(Y(:,end));                                      % current actual prices
+mr = 100*(m./pr-1);                                      % exact mean vector of forecast returns on percent scale
+Mr = 10^4*lprod(1./pr,rprod(M,1./pr));   Mr=(Mr+Mr')/2;  % exact variance matrix of forecast returns on percent scale
+
+r=min(.5,0.8*max(mr));                                   %  r is the target percent return 
+[ wtarget wtargetSD wtargcon wtargconSD wminvar wminvarSD] = portfolios(mr,Mr,r,char(Ynames),1);
+
+ 
+
+
+ 
+% now a study of cumulative portfolios
+% reallocate each k time points and see how much we make ... 
+
+rmin=[0.5 1]; rt=zeros(1,tfore-k);
+wall=zeros(q,3,tfore-k); wf=zeros(3,tfore-k); wsdall=zeros(3,tfore-k); wealth=zeros(3,tfore-k); 
+Yreturns=100*(exp(Y(:,T-tfore+1:T)-Y(:,T-tfore:T-1))-1);
+for t=1:tfore-k
+    f=ffore(:,t); V=Vfore(:,:,t);       V=(V+V')/2;                                                              % these are forecast mean and variance matrix for log prices
+    m = exp(f+diag(V)/2); M=(m*m').*(exp(V)-1);          % these are for actual prices
+    % now find mean vector and variance matrix of *forecast returns* ....
+    pr = exp(Y(:,tf+t));                                     % current actual prices
+    mr = 100*(m./pr-1);                                      % exact mean vector of forecast returns on percent scale
+    Mr = 10^4*lprod(1./pr,rprod(M,1./pr));   Mr=(Mr+Mr')/2;  % exact variance matrix of forecast returns on percent scale
+    r=min(rmin(1),rmin(2)*max(mr));   rt(t)=r;          %  r is the target percent return 
+    display(['Optimizing portfolio at ',int2str(t+tf),'/',int2str(T)]) 
+    [ wtarget wtargetSD wtargcon wtargconSD wminvar wminvarSD]=portfolios(mr,Mr,r,char(Ynames),0);
+    wall(:,:,t) = [ wtargcon wtarget wminvar ]; 
+    wf(:,t)     = wall(:,:,t)'*mr;
+    wsdall(:,t) = [ wtargconSD wtargetSD wminvarSD];
+    wealth(:,t) =  wall(:,:,t)'*Yreturns(:,t); 
+end
+
+ftime = T-size(Yreturns,2)+1:T;  tticks=1:365:length(ftime); 
+ti=int2str(time(ftime)'); yr=ti(tticks,3:4); mo=ti(tticks,5:6); da=ti(tticks,7:8);
+tdates=cell(size(tticks)); for i=1:length(tticks), 
+    tdates{i}=[mo(i,:)  '/' yr(i,:)]; end; %'/' da(i,:) '|' ]; end
+xa=['set(gca,''Xtick'',tticks);set(gca,''XtickLabel'',tdates);xlabel(''mo/yr''); box off;']; 
+
+figure(1); clf
+%subplot(3,1,1); plot(wealth'); eval(xa)
+subplot(2,1,1); plot(100*cumprod(1+wealth(1:3,:)'/100)-1); eval(xa)
+    title(['Portfolios on ',int2str(k),'-day returns: TV-VAR(',int2str(arp),'),\beta=',num2str(beta,2)])
+        legend('targcon','target','minvar','location','southeast'); legend boxoff; ylabel('%','rotation',0) 
+           text (50,150,'Cumulative returns'); %ylim([0 160])
+subplot(2,1,2); plot(wsdall'); eval(xa); text(50,9,'Risk'); ylabel('%','rotation',0); ylim([0 30])
+
+figure(2); clf
+ subplot(3,1,1); plot(squeeze(wall(4,1,:))'); eval(xa); title('GBP: targcon'); line([0 1+length(ftime)],[0 0],'color','k','linestyle',':')
+ subplot(3,1,2); plot(squeeze(wall(4,2,:))'); eval(xa); title('target'); line([0 1+length(ftime)],[0 0],'color','k','linestyle',':')
+ subplot(3,1,3); plot(squeeze(wall(4,3,:))'); eval(xa); title('minvar'); line([0 1+length(ftime)],[0 0],'color','k','linestyle',':')
+ 
+figure(3); clf
+ subplot(3,1,1); plot(squeeze(wall(11,1,:))'); eval(xa); title('GOLD: targcon'); line([0 1+length(ftime)],[0 0],'color','k','linestyle',':')
+ subplot(3,1,2); plot(squeeze(wall(11,2,:))'); eval(xa); title('target'); line([0 1+length(ftime)],[0 0],'color','k','linestyle',':')
+ subplot(3,1,3); plot(squeeze(wall(11,3,:))'); eval(xa); title('minvar'); line([0 1+length(ftime)],[0 0],'color','k','linestyle',':')
+ 
+  
+   
+  
