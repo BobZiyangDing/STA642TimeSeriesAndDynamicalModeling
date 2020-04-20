@@ -15,7 +15,7 @@ def append_risk_return(risk_data_name, placeholder):
     :param placeholder: dic:
     :return: dic: key are datetime object; values are risk
     """
-    risk_data = pd.read_csv("./{}.csv".format(risk_data_name), index_col=0)
+    risk_data = pd.read_csv(".\{}.csv".format(risk_data_name), index_col=0)
     risk_data.index = pd.to_datetime(risk_data.index)
 
     keys = list(placeholder.keys())
@@ -23,7 +23,7 @@ def append_risk_return(risk_data_name, placeholder):
     ref = sorted(pd.to_datetime(temp["fuck"]))
 
     last_risk = 2
-    last_price = 2680
+    last_price = 2350
     for i, p in enumerate(ref):
         if p in list(risk_data.index):
             if risk_data[risk_data_name].loc[p] != ".":
@@ -55,7 +55,7 @@ class DataCleaner:
         :param top: the # of mostly traded ticker on the day
         :return: tuple, (date, trimmed pandas dataFrame)
         """
-        month_data = pd.read_csv("./SPXdata/{}.csv".format(data_name))[self.columns]
+        month_data = pd.read_csv(".\SPXdata\{}.csv".format(data_name))[self.columns]
 
         # Check if we require only call option
         if self.callOnly:
