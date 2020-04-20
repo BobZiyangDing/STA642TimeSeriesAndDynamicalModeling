@@ -114,12 +114,3 @@ class DataCleaner:
     def get_num_observation(self):
         print("Attached {} option observations".format(self.num_observation))
         return self.num_observation
-
-
-# if __name__ == '__main__':
-#     cleaner = DataCleaner(columns=["code", "OptionType", "expirydate", "date", "strike", "spotclose"],
-#                           date_columns=["date", "expirydate"])
-#     data = {}
-#     cleaner.insert_data(data, "SPX_201704_1day", 3)
-#
-#     cleaner.append_risk("USD3MTD156N", data, "4/3/2017", "4/28/2017")
