@@ -23,7 +23,7 @@ def append_risk_return(risk_data_name, placeholder):
     ref = sorted(pd.to_datetime(temp["fuck"]))
 
     last_risk = 2
-    last_price = 2350
+    last_price = 2680
     for i, p in enumerate(ref):
         if p in list(risk_data.index):
             if risk_data[risk_data_name].loc[p] != ".":
